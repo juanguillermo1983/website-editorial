@@ -1,0 +1,184 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Infraestructura para sitio editorial con portada de libro, usando Auto Scaling y Load Balancer"
+
+Parameters:
+  VpcCIDR:
+    Description: CIDR para la VPC
+    Type: String
+    Default: 10.0.0.0/16
+
+  PublicSubnet1CIDR:
+    Type: String
+    Default: 10.0.1.0/24
+
+  PublicSubnet2CIDR:
+    Type: String
+    Default: 10.0.2.0/24
+
+Resources:
+
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: EditorialVPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PublicSubnet1CIDR
+      AvailabilityZone: us-east-1a
+      MapPublicIpOnLaunch: true
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PublicSubnet2CIDR
+      AvailabilityZone: us-east-1b
+      MapPublicIpOnLaunch: true
+
+  Subnet1RouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  Subnet2RouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  ServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP access
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  MyLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: EditorialTemplate
+      LaunchTemplateData:
+        InstanceType: t2.micro
+        ImageId: ami-03972092c42e8c0ca
+        SecurityGroupIds:
+          - !Ref SSHSecurityGroup
+          - !Ref ServerSecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            # Instalar git y httpd
+            yum install -y git httpd
+            systemctl enable httpd
+            systemctl start httpd
+
+            # Clonar el repositorio desde GitHub
+            cd /tmp
+            git clone https://github.com/juanguillermo1983/website-editorial.git
+
+             echo "<footer><p>Recurso servido desde el servidor: $(hostname)</p></footer>" >> /tmp/website-editorial/index.html
+
+            # Mover index.html y assets a /var/www/html
+            cp /tmp/website-editorial/index.html /var/www/html/
+            cp -r /tmp/website-editorial/assets /var/www/html/
+
+            # Eliminar repositorio temporal
+            rm -rf /tmp/website-editorial
+
+
+  MyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref MyVPC
+      TargetType: instance
+      HealthCheckPath: /
+
+  MyLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: EditorialALB
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ServerSecurityGroup
+      Scheme: internet-facing
+      Type: application
+
+  MyListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTargetGroup
+      LoadBalancerArn: !Ref MyLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  MyAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MyLaunchTemplate
+        Version: !GetAtt MyLaunchTemplate.LatestVersionNumber
+      MinSize: "1"
+      MaxSize: "3"
+      DesiredCapacity: "2"
+      TargetGroupARNs:
+        - !Ref MyTargetGroup
+      HealthCheckType: EC2
+
+Outputs:
+  LoadBalancerDNS:
+    Description: URL pública del sitio editorial
+    Value: !GetAtt MyLoadBalancer.DNSName
