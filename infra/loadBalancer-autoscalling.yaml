@@ -121,7 +121,7 @@ Resources:
             cd /tmp
             git clone https://github.com/juanguillermo1983/website-editorial.git
 
-             echo "<footer><p>Recurso servido desde el servidor: $(hostname)</p></footer>" >> /tmp/website-editorial/index.html
+            echo "<footer><p>Recurso servido desde el servidor: $(hostname)</p></footer>" >> /tmp/website-editorial/index.html
 
             # Mover index.html y assets a /var/www/html
             cp /tmp/website-editorial/index.html /var/www/html/
