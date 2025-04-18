@@ -13,6 +13,7 @@
       display: flex;
       justify-content: center;
       align-items: center;
+      flex-direction: column;
       height: 100vh;
     }
     .container {
@@ -22,25 +23,46 @@
       background-color: white;
       padding: 20px;
       max-width: 400px;
+      margin-bottom: 20px;
     }
     .container img {
       width: 100%;
+      max-width: 300px;
       border-radius: 10px;
+      margin-bottom: 15px;
     }
     h1 {
       font-size: 1.5em;
       margin-top: 1em;
     }
+    h2 {
+      font-size: 1.2em;
+      color: #333;
+    }
     p {
       color: #555;
+      margin: 10px 0;
+    }
+    footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.9em;
+      color: #666;
     }
   </style>
 </head>
 <body>
   <div class="container">
+    <h2>Nuevo Libro</h2>
     <img src="assets/img/portada-libro.jpg" alt="Portada del Libro" />
     <h1>Título del Libro</h1>
     <p>Autor del Libro</p>
   </div>
+
+  <footer>
+    <p>Este recurso está siendo servido por el servidor: <strong><?php echo gethostname(); ?></strong></p>
+    <p>Este recurso está siendo servido por el servidor: <strong><?php echo $_SERVER['SERVER_NAME']; ?></strong></p>
+
+  </footer>
 </body>
 </html>
